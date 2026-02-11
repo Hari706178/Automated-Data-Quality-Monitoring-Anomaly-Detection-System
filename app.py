@@ -1,97 +1,151 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import chardet
 import io
+from sklearn.ensemble import IsolationForest
 
-st.set_page_config(page_title="Universal Data Analyzer", layout="wide")
+st.set_page_config(page_title="Data Quality Monitoring System", layout="wide")
 
-st.title("📊 Universal Data Analysis App")
-st.write("Upload ANY CSV or Excel dataset safely — no encoding errors!")
+st.title("📊 Automated Data Quality Monitoring & Anomaly Detection System")
 
-# ---------- Universal Dataset Loader ----------
+# ---------- Universal Loader ----------
 def load_dataset(uploaded_file):
     try:
-        file_name = uploaded_file.name.lower()
+        name = uploaded_file.name.lower()
 
-        # CSV Handling with encoding detection
-        if file_name.endswith(".csv"):
+        if name.endswith(".csv"):
             try:
                 return pd.read_csv(uploaded_file)
-
             except UnicodeDecodeError:
                 uploaded_file.seek(0)
-                rawdata = uploaded_file.read(100000)
-                encoding = chardet.detect(rawdata)["encoding"]
+                enc = chardet.detect(uploaded_file.read(100000))["encoding"]
                 uploaded_file.seek(0)
+                return pd.read_csv(uploaded_file, encoding=enc)
 
-                return pd.read_csv(
-                    io.BytesIO(uploaded_file.read()),
-                    encoding=encoding,
-                    low_memory=False
-                )
-
-        # Excel Handling
-        elif file_name.endswith((".xlsx", ".xls")):
+        elif name.endswith((".xlsx", ".xls")):
             return pd.read_excel(uploaded_file)
 
-        else:
-            st.error("Unsupported file format.")
-            return None
-
     except Exception as e:
-        st.error(f"Error loading file: {e}")
+        st.error(f"Error: {e}")
         return None
 
 
+# ---------- Quality Score ----------
+def data_quality_score(df):
+    missing = df.isna().sum().sum()
+    duplicates = df.duplicated().sum()
+
+    score = 100
+    score -= (missing / (df.shape[0]*df.shape[1])) * 50
+    score -= (duplicates / df.shape[0]) * 50
+
+    return round(max(score, 0), 2)
+
+
 # ---------- File Upload ----------
-file = st.file_uploader(
-    "Upload Dataset",
-    type=["csv", "xlsx", "xls"]
-)
+file = st.file_uploader("Upload Dataset", type=["csv", "xlsx", "xls"])
 
 if file:
     df = load_dataset(file)
 
     if df is not None:
 
-        st.success("✅ Dataset Loaded Successfully!")
+        st.success("Dataset Loaded Successfully!")
 
-        # ---------- Dataset Info ----------
+        # Preview
         st.subheader("Dataset Preview")
         st.dataframe(df.head())
 
+        # Metrics
         col1, col2, col3 = st.columns(3)
-
         col1.metric("Rows", df.shape[0])
         col2.metric("Columns", df.shape[1])
         col3.metric("Missing Values", df.isna().sum().sum())
 
-        # ---------- Column Search ----------
-        st.subheader("🔎 Search Column")
-        column = st.selectbox("Select Column", df.columns)
+        # ---------- Quality Score ----------
+        st.subheader("Data Quality Score")
 
+        score = data_quality_score(df)
+        st.metric("Quality Score", f"{score}/100")
+
+        if score > 80:
+            st.success("✅ Dataset is Good — Ready for ML/Analytics")
+        elif score > 50:
+            st.warning("⚠ Dataset is Average — Needs Cleaning")
+        else:
+            st.error("❌ Dataset Poor — Cleaning Required")
+
+        # ---------- Suggestions ----------
+        st.subheader("Improvement Suggestions")
+
+        if df.isna().sum().sum() > 0:
+            st.write("• Handle missing values:")
+            st.write("  - Fill numeric with mean/median")
+            st.write("  - Fill categorical with mode")
+
+        if df.duplicated().sum() > 0:
+            st.write("• Remove duplicate records")
+
+        # ---------- Outlier Detection ----------
+        st.subheader("Outlier Detection")
+
+        numeric = df.select_dtypes(include=np.number)
+
+        if not numeric.empty:
+            outlier_count = 0
+            for col in numeric.columns:
+                Q1 = numeric[col].quantile(0.25)
+                Q3 = numeric[col].quantile(0.75)
+                IQR = Q3 - Q1
+                outliers = ((numeric[col] < Q1-1.5*IQR) |
+                            (numeric[col] > Q3+1.5*IQR)).sum()
+                outlier_count += outliers
+
+            st.write(f"Total Possible Outliers: {outlier_count}")
+            st.write("Suggestion: Consider normalization or capping.")
+
+        # ---------- ML Anomaly Detection ----------
+        st.subheader("ML-Based Anomaly Detection")
+
+        if not numeric.empty:
+            model = IsolationForest(contamination=0.05)
+            preds = model.fit_predict(numeric.fillna(0))
+
+            df["Anomaly"] = preds
+            st.write(df[df["Anomaly"] == -1].head())
+
+        # ---------- Column Search ----------
+        st.subheader("Search Data")
+
+        column = st.selectbox("Select Column", df.columns)
         keyword = st.text_input("Search Value")
 
         if keyword:
-            filtered = df[
-                df[column]
-                .astype(str)
+            result = df[
+                df[column].astype(str)
                 .str.contains(keyword, case=False, na=False)
             ]
-            st.dataframe(filtered)
+            st.dataframe(result)
 
-        # ---------- Basic Stats ----------
-        st.subheader("Statistical Summary")
-        st.write(df.describe(include="all"))
+        # ---------- Auto Report ----------
+        st.subheader("Generate Report")
 
-        # ---------- Missing Values ----------
-        st.subheader("Missing Values Analysis")
-        st.write(df.isnull().sum())
+        report = f"""
+        DATA QUALITY REPORT
 
-        # ---------- Correlation ----------
-        numeric_df = df.select_dtypes(include="number")
-        if not numeric_df.empty:
-            st.subheader("Correlation Matrix")
-            st.dataframe(numeric_df.corr())
+        Rows: {df.shape[0]}
+        Columns: {df.shape[1]}
+        Missing Values: {df.isna().sum().sum()}
+        Duplicate Rows: {df.duplicated().sum()}
+        Quality Score: {score}/100
+        """
+
+        st.download_button(
+            "Download Report",
+            report,
+            file_name="data_quality_report.txt"
+        )
+
 
 
