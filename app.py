@@ -1,157 +1,97 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.ensemble import IsolationForest
-import matplotlib.pyplot as plt
+import chardet
+import io
 
-st.set_page_config(page_title="Data Quality Monitor", layout="wide")
+st.set_page_config(page_title="Universal Data Analyzer", layout="wide")
 
-st.title("📊 Automated Data Quality Monitoring & Anomaly Detection System")
+st.title("📊 Universal Data Analysis App")
+st.write("Upload ANY CSV or Excel dataset safely — no encoding errors!")
 
-# =========================
-# Upload Dataset
-# =========================
-file = st.file_uploader("Upload CSV Dataset", type=["csv"])
+# ---------- Universal Dataset Loader ----------
+def load_dataset(uploaded_file):
+    try:
+        file_name = uploaded_file.name.lower()
+
+        # CSV Handling with encoding detection
+        if file_name.endswith(".csv"):
+            try:
+                return pd.read_csv(uploaded_file)
+
+            except UnicodeDecodeError:
+                uploaded_file.seek(0)
+                rawdata = uploaded_file.read(100000)
+                encoding = chardet.detect(rawdata)["encoding"]
+                uploaded_file.seek(0)
+
+                return pd.read_csv(
+                    io.BytesIO(uploaded_file.read()),
+                    encoding=encoding,
+                    low_memory=False
+                )
+
+        # Excel Handling
+        elif file_name.endswith((".xlsx", ".xls")):
+            return pd.read_excel(uploaded_file)
+
+        else:
+            st.error("Unsupported file format.")
+            return None
+
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
+
+
+# ---------- File Upload ----------
+file = st.file_uploader(
+    "Upload Dataset",
+    type=["csv", "xlsx", "xls"]
+)
 
 if file:
+    df = load_dataset(file)
 
-    df = pd.read_csv(file)
+    if df is not None:
 
-    # =========================
-    # GLOBAL SEARCH BAR
-    # =========================
-    st.sidebar.header("🔎 Search Dataset")
+        st.success("✅ Dataset Loaded Successfully!")
 
-    search_term = st.sidebar.text_input(
-        "Search any value (name, number, etc.)"
-    )
+        # ---------- Dataset Info ----------
+        st.subheader("Dataset Preview")
+        st.dataframe(df.head())
 
-    if search_term:
-        mask = df.astype(str).apply(
-            lambda row: row.str.contains(search_term, case=False).any(),
-            axis=1
-        )
-        df = df[mask]
-        st.success(f"Showing results for: {search_term}")
+        col1, col2, col3 = st.columns(3)
 
-    # =========================
-    # DATASET OVERVIEW
-    # =========================
-    st.header("Dataset Overview")
+        col1.metric("Rows", df.shape[0])
+        col2.metric("Columns", df.shape[1])
+        col3.metric("Missing Values", df.isna().sum().sum())
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Rows", df.shape[0])
-    col2.metric("Columns", df.shape[1])
-    col3.metric("Missing Cells", df.isnull().sum().sum())
+        # ---------- Column Search ----------
+        st.subheader("🔎 Search Column")
+        column = st.selectbox("Select Column", df.columns)
 
-    st.dataframe(df.head())
+        keyword = st.text_input("Search Value")
 
-    # =========================
-    # DATA TYPES
-    # =========================
-    st.header("Column Data Types")
-    st.write(df.dtypes)
+        if keyword:
+            filtered = df[
+                df[column]
+                .astype(str)
+                .str.contains(keyword, case=False, na=False)
+            ]
+            st.dataframe(filtered)
 
-    # =========================
-    # MISSING VALUES
-    # =========================
-    st.header("Missing Values Analysis")
+        # ---------- Basic Stats ----------
+        st.subheader("Statistical Summary")
+        st.write(df.describe(include="all"))
 
-    missing = df.isnull().sum()
-    missing = missing[missing > 0]
+        # ---------- Missing Values ----------
+        st.subheader("Missing Values Analysis")
+        st.write(df.isnull().sum())
 
-    if len(missing) > 0:
-        st.bar_chart(missing)
-    else:
-        st.success("No Missing Values")
+        # ---------- Correlation ----------
+        numeric_df = df.select_dtypes(include="number")
+        if not numeric_df.empty:
+            st.subheader("Correlation Matrix")
+            st.dataframe(numeric_df.corr())
 
-    # =========================
-    # DUPLICATES
-    # =========================
-    st.header("Duplicate Records")
 
-    dup_count = df.duplicated().sum()
-    st.metric("Duplicate Rows", dup_count)
-
-    # =========================
-    # CONSTANT COLUMNS
-    # =========================
-    st.header("Constant Columns")
-
-    const_cols = [c for c in df.columns if df[c].nunique() == 1]
-
-    if const_cols:
-        st.write(const_cols)
-    else:
-        st.success("No Constant Columns")
-
-    # =========================
-    # NUMERIC ANALYSIS
-    # =========================
-    numeric_cols = df.select_dtypes(include=np.number).columns
-
-    if len(numeric_cols) > 0:
-
-        # OUTLIERS
-        st.header("Outlier Detection (IQR)")
-
-        outliers = {}
-
-        for col in numeric_cols:
-            Q1 = df[col].quantile(0.25)
-            Q3 = df[col].quantile(0.75)
-            IQR = Q3 - Q1
-
-            count = len(df[
-                (df[col] < Q1 - 1.5 * IQR) |
-                (df[col] > Q3 + 1.5 * IQR)
-            ])
-
-            outliers[col] = count
-
-        st.write(outliers)
-
-        # ANOMALY DETECTION
-        st.header("Anomaly Detection (ML)")
-
-        model = IsolationForest(contamination=0.05)
-        df["Anomaly"] = model.fit_predict(
-            df[numeric_cols].fillna(0)
-        )
-
-        anomaly_count = (df["Anomaly"] == -1).sum()
-        st.metric("Anomalies Found", anomaly_count)
-
-        st.bar_chart(df["Anomaly"].value_counts())
-
-        # DISTRIBUTION PLOT
-        st.header("Data Distribution")
-
-        col_selected = st.selectbox("Select Numeric Column", numeric_cols)
-
-        fig, ax = plt.subplots()
-        df[col_selected].hist(ax=ax)
-        st.pyplot(fig)
-
-    # =========================
-    # SUMMARY STATS
-    # =========================
-    st.header("Statistical Summary")
-    st.dataframe(df.describe(include="all"))
-
-    # =========================
-    # DOWNLOAD DATA
-    # =========================
-    st.header("Download Processed Dataset")
-
-    csv = df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "Download CSV",
-        csv,
-        "processed_data.csv",
-        "text/csv"
-    )
-
-else:
-    st.info("Upload a CSV file to start analysis.")
