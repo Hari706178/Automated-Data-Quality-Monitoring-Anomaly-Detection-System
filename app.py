@@ -7,20 +7,17 @@
 # scikit-learn
 # openpyxl
 # xlrd
-# chardet
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import chardet
-import io
 from sklearn.ensemble import IsolationForest
 
 st.set_page_config(page_title="RL Data Quality System", layout="wide")
 
 st.title("🤖 Automated Data Quality Monitoring + RL Recommendation System")
 
-# ================= DATA LOADER =================
+# ================= DATA LOADER (NO CHARDET REQUIRED) =================
 def load_dataset(uploaded_file):
     try:
         name = uploaded_file.name.lower()
@@ -28,11 +25,9 @@ def load_dataset(uploaded_file):
         if name.endswith(".csv"):
             try:
                 return pd.read_csv(uploaded_file)
-            except UnicodeDecodeError:
+            except Exception:
                 uploaded_file.seek(0)
-                enc = chardet.detect(uploaded_file.read(100000))["encoding"]
-                uploaded_file.seek(0)
-                return pd.read_csv(io.BytesIO(uploaded_file.read()), encoding=enc)
+                return pd.read_csv(uploaded_file, encoding="latin1")
 
         elif name.endswith((".xlsx", ".xls")):
             return pd.read_excel(uploaded_file)
@@ -53,9 +48,6 @@ def data_quality_score(df):
     return round(max(score, 0), 2)
 
 # ================= RL MODEL (Q-LEARNING STYLE) =================
-# States: good / average / poor dataset quality
-# Actions: possible cleaning operations
-
 Q_table = {
     "good": [0, 0, 0],
     "average": [0, 0, 0],
@@ -76,7 +68,6 @@ def rl_recommendation(score):
     else:
         state = "poor"
 
-    # Simulated learning update (demo RL behaviour)
     reward = np.random.rand(3)
     Q_table[state] = list(reward)
 
@@ -92,36 +83,30 @@ if file:
     if df is not None:
         st.success("Dataset Loaded Successfully")
 
-        # Preview
         st.subheader("Dataset Preview")
         st.dataframe(df.head())
 
-        # Basic Metrics
         col1, col2, col3 = st.columns(3)
         col1.metric("Rows", df.shape[0])
         col2.metric("Columns", df.shape[1])
         col3.metric("Missing Values", df.isna().sum().sum())
 
-        # Quality Score
         score = data_quality_score(df)
         st.subheader("Data Quality Score")
         st.metric("Score", f"{score}/100")
 
-        # RL Recommendation
         state, recommendation = rl_recommendation(score)
 
         st.subheader("Reinforcement Learning Recommendation")
         st.write(f"Dataset State: **{state.upper()}**")
         st.success(f"Recommended Action: {recommendation}")
 
-        # Improvement Suggestions
         st.subheader("Data Cleaning Suggestions")
         if df.isna().sum().sum() > 0:
             st.write("• Handle missing values (mean/median/mode)")
         if df.duplicated().sum() > 0:
             st.write("• Remove duplicate rows")
 
-        # ML Anomaly Detection
         numeric = df.select_dtypes(include=np.number)
 
         if not numeric.empty:
@@ -132,7 +117,6 @@ if file:
             df["Anomaly"] = preds
             st.dataframe(df[df["Anomaly"] == -1].head())
 
-        # Search Feature
         st.subheader("Search Dataset")
         column = st.selectbox("Select Column", df.columns)
         keyword = st.text_input("Search Value")
@@ -144,7 +128,6 @@ if file:
             ]
             st.dataframe(filtered)
 
-        # Report Download
         report = f"""
         DATA QUALITY REPORT
 
@@ -161,3 +144,4 @@ if file:
             report,
             file_name="data_quality_report.txt"
         )
+
