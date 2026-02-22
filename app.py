@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import IsolationForest
 
 st.set_page_config(page_title="RL Data Quality System", layout="wide")
 
 st.title("🤖 Automated Data Quality Monitoring + RL Recommendation System")
 
-# ================= DATA LOADER (NO CHARDET REQUIRED) =================
+# ================= DATA LOADER =================
 def load_dataset(uploaded_file):
     try:
         name = uploaded_file.name.lower()
@@ -37,7 +36,7 @@ def data_quality_score(df):
 
     return round(max(score, 0), 2)
 
-# ================= RL MODEL (Q-LEARNING STYLE) =================
+# ================= RL MODEL (Q-LEARNING STYLE SIMULATION) =================
 Q_table = {
     "good": [0, 0, 0],
     "average": [0, 0, 0],
@@ -91,22 +90,31 @@ if file:
         st.write(f"Dataset State: **{state.upper()}**")
         st.success(f"Recommended Action: {recommendation}")
 
-        st.subheader("Data Cleaning Suggestions")
-        if df.isna().sum().sum() > 0:
-            st.write("• Handle missing values (mean/median/mode)")
-        if df.duplicated().sum() > 0:
-            st.write("• Remove duplicate rows")
-
+        # ================= Statistical Anomaly Detection (IQR) =================
         numeric = df.select_dtypes(include=np.number)
 
         if not numeric.empty:
-            st.subheader("ML Anomaly Detection (Isolation Forest)")
-            model = IsolationForest(contamination=0.05, random_state=42)
-            preds = model.fit_predict(numeric.fillna(0))
+            st.subheader("Anomaly Detection (IQR Method)")
+            anomaly_count = 0
+            anomaly_index = set()
 
-            df["Anomaly"] = preds
-            st.dataframe(df[df["Anomaly"] == -1].head())
+            for col in numeric.columns:
+                Q1 = numeric[col].quantile(0.25)
+                Q3 = numeric[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower = Q1 - 1.5 * IQR
+                upper = Q3 + 1.5 * IQR
 
+                outliers = numeric[(numeric[col] < lower) | (numeric[col] > upper)]
+                anomaly_count += len(outliers)
+                anomaly_index.update(outliers.index)
+
+            st.write(f"Total Potential Anomalies Detected: {anomaly_count}")
+
+            if anomaly_index:
+                st.dataframe(df.loc[list(anomaly_index)].head())
+
+        # ================= Search Feature =================
         st.subheader("Search Dataset")
         column = st.selectbox("Select Column", df.columns)
         keyword = st.text_input("Search Value")
@@ -118,6 +126,7 @@ if file:
             ]
             st.dataframe(filtered)
 
+        # ================= Report =================
         report = f"""
         DATA QUALITY REPORT
 
@@ -134,5 +143,6 @@ if file:
             report,
             file_name="data_quality_report.txt"
         )
+
 
 
