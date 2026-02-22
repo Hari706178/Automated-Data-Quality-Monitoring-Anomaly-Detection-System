@@ -1,15 +1,3 @@
-# 🚀 AI Powered Data Monitoring + Reinforcement Learning Cleaning Agent
-# ----------------------------------------------------------------------
-# REQUIREMENTS.TXT
-# streamlit
-# pandas
-# numpy
-# openpyxl
-# xlrd
-
-# NOTE:
-# Removed matplotlib to avoid deployment issues on Streamlit Cloud.
-# Using native Streamlit charts instead.
 
 import streamlit as st
 import pandas as pd
