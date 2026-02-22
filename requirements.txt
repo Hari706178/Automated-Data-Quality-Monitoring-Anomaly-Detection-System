@@ -1,9 +1,13 @@
 # streamlit
 # pandas
 # numpy
-# matplotlib
 # openpyxl
 # xlrd
+
+# NOTE:
+# Removed matplotlib to avoid deployment issues on Streamlit Cloud.
+# Using native Streamlit charts instead.
+
 
 
 
