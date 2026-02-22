@@ -1,7 +1,19 @@
+# 🚀 AI Powered Data Monitoring + Reinforcement Learning Cleaning Agent
+# ----------------------------------------------------------------------
+# REQUIREMENTS.TXT
+# streamlit
+# pandas
+# numpy
+# openpyxl
+# xlrd
+
+# NOTE:
+# Removed matplotlib to avoid deployment issues on Streamlit Cloud.
+# Using native Streamlit charts instead.
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="AI Data Monitoring RL System", layout="wide")
 
@@ -64,7 +76,10 @@ def auto_clean(df, action):
             if df_clean[col].dtype in ["float64","int64"]:
                 df_clean[col].fillna(df_clean[col].mean(), inplace=True)
             else:
-                df_clean[col].fillna(df_clean[col].mode()[0] if not df_clean[col].mode().empty else "Unknown", inplace=True)
+                if not df_clean[col].mode().empty:
+                    df_clean[col].fillna(df_clean[col].mode()[0], inplace=True)
+                else:
+                    df_clean[col].fillna("Unknown", inplace=True)
     elif action == "remove_duplicates":
         df_clean = df_clean.drop_duplicates()
     elif action == "normalize":
@@ -91,7 +106,6 @@ if file:
         st.subheader("📊 Data Quality Score")
         st.metric("Score", f"{score_before}/100")
 
-        # Confidence Meter
         if score_before > 80:
             st.success("🟢 Ready for ML")
         elif score_before > 50:
@@ -99,13 +113,11 @@ if file:
         else:
             st.error("🔴 Not Ready")
 
-        # RL Action
         action_idx = choose_action(state)
         recommended_action = actions[action_idx]
         st.subheader("🤖 RL Recommended Action")
         st.write(recommended_action)
 
-        # Auto Clean Button
         if st.button("🚀 Auto Clean Dataset Using RL Recommendation"):
             df_clean = auto_clean(df, recommended_action)
             score_after = quality_score(df_clean)
@@ -121,7 +133,6 @@ if file:
             st.write(f"After: {score_after}")
             st.write(f"Reward: {reward}")
 
-            # Data Drift Detection
             st.subheader("📉 Data Drift Detection")
             numeric_before = df.select_dtypes(include=np.number)
             numeric_after = df_clean.select_dtypes(include=np.number)
@@ -131,40 +142,27 @@ if file:
                     var_shift = numeric_after[col].var() - numeric_before[col].var()
                     st.write(f"{col} → Mean Shift: {round(mean_shift,4)}, Variance Shift: {round(var_shift,4)}")
 
-        # ================= DASHBOARD VISUALS =================
-        st.subheader("📊 Missing Value Heatmap")
-        fig, ax = plt.subplots()
-        ax.imshow(df.isna(), aspect='auto')
-        ax.set_title("Missing Value Map")
-        st.pyplot(fig)
+        # ================= DASHBOARD USING STREAMLIT NATIVE =================
+        st.subheader("📊 Missing Values Overview")
+        missing_data = df.isna().sum()
+        st.bar_chart(missing_data)
 
-        st.subheader("📊 Correlation Heatmap")
+        st.subheader("📊 Correlation Matrix")
         corr = df.select_dtypes(include=np.number).corr()
-        fig2, ax2 = plt.subplots()
-        cax = ax2.imshow(corr, cmap="coolwarm")
-        fig2.colorbar(cax)
-        ax2.set_xticks(range(len(corr.columns)))
-        ax2.set_xticklabels(corr.columns, rotation=90)
-        ax2.set_yticks(range(len(corr.columns)))
-        ax2.set_yticklabels(corr.columns)
-        st.pyplot(fig2)
+        st.dataframe(corr)
 
-        # Distribution Plot
         numeric_cols = df.select_dtypes(include=np.number).columns
         if len(numeric_cols) > 0:
-            st.subheader("📊 Distribution Plot")
+            st.subheader("📊 Distribution Overview")
             col_choice = st.selectbox("Select Column", numeric_cols)
-            fig3, ax3 = plt.subplots()
-            ax3.hist(df[col_choice].dropna(), bins=20)
-            st.pyplot(fig3)
+            st.line_chart(df[col_choice])
 
-        # ================= DATA TYPE INTELLIGENCE =================
         st.subheader("🧠 Data Type Intelligence")
         for col in df.columns:
             if df[col].dtype == "object":
                 try:
                     pd.to_numeric(df[col])
-                    st.write(f"{col} → Numeric stored as Object (convert recommended)")
+                    st.write(f"{col} → Numeric stored as Object (conversion recommended)")
                 except:
                     try:
                         pd.to_datetime(df[col])
@@ -172,7 +170,6 @@ if file:
                     except:
                         pass
 
-        # ================= FEATURE IMPORTANCE =================
         st.subheader("⭐ Feature Importance (Linear Approximation)")
         numeric = df.select_dtypes(include=np.number)
         if numeric.shape[1] > 1:
@@ -184,18 +181,15 @@ if file:
                 importance = pd.Series(np.abs(coef), index=numeric.columns[:-1])
                 st.bar_chart(importance)
 
-        # ================= DATA PROFILING =================
         st.subheader("📑 Data Profiling Summary")
         profile = pd.DataFrame({
             "Mean": numeric.mean(),
             "Median": numeric.median(),
             "Skewness": numeric.skew(),
             "Kurtosis": numeric.kurt(),
-            "Unique Values": df.nunique()
         })
         st.dataframe(profile)
 
-        # ================= SEARCH =================
         st.subheader("🔎 Search Dataset")
         column = st.selectbox("Search Column", df.columns)
         keyword = st.text_input("Search Keyword")
@@ -203,9 +197,9 @@ if file:
             result = df[df[column].astype(str).str.contains(keyword, case=False, na=False)]
             st.dataframe(result)
 
-        # ================= REPORT DOWNLOAD =================
         report = f"AI DATA QUALITY REPORT\nScore Before Cleaning: {score_before}\nState: {state}"
         st.download_button("Download Report", report, file_name="AI_Data_Report.txt")
+
 
 
 
