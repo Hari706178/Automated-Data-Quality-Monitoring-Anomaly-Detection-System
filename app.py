@@ -1,13 +1,3 @@
-# Automated Data Quality Monitoring + Anomaly Detection + Reinforcement Learning System
-# -----------------------------------------------------------
-# REQUIREMENTS.TXT:
-# streamlit
-# pandas
-# numpy
-# scikit-learn
-# openpyxl
-# xlrd
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -144,4 +134,5 @@ if file:
             report,
             file_name="data_quality_report.txt"
         )
+
 
