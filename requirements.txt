@@ -1,11 +1,10 @@
 # streamlit
 # pandas
 # numpy
+# matplotlib
 # openpyxl
 # xlrd
 
-# NOTE:
-# We removed scikit-learn to avoid deployment errors on Streamlit Cloud.
-# Anomaly detection is now done using statistical IQR method (no sklearn dependency).
+
 
 
